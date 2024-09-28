@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model News {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  content     String?
+  author      String?
+  sourceId    String?
+  sourceName  String?
+  url         String   @unique
+  urlToImage  String?
+  publishedAt DateTime
+  groups      GroupNews[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  news        GroupNews[]
+  users       UserGroup[]
+}
+
+model User {
+  id       String   @id @default(uuid())
+  username String   @unique
+  password String
+  name     String
+  city     String?
+  groups   UserGroup[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GroupNews {
+  groupId String
+  newsId  String
+  group   Group  @relation(fields: [groupId], references: [id])
+  news    News   @relation(fields: [newsId], references: [id])
+
+  @@id([groupId, newsId])
+}
+
+model UserGroup {
+  userId  String
+  groupId String
+  user    User   @relation(fields: [userId], references: [id])
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  @@id([userId, groupId])
+}
