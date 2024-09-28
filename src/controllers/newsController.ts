@@ -1,5 +1,5 @@
 import { Request, Response , NextFunction } from 'express';
-import { prisma } from '../app';
+import { prisma } from '../index';
 import { fetchNewsFromApi } from '../services/newsApiService';
 import { getAiAnswer } from '../services/aiService';
 import { PagingData, paginate } from '../utils/pagingUtils';

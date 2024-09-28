@@ -4,13 +4,13 @@ import newsRoutes from './routes/newsRoutes';
 import authRoutes from './routes/authRoutes';
 import { config } from './config/config';
 
-const app = express();
+const index = express();
 export const prisma = new PrismaClient();
 
-app.use(express.json());
-app.use('/api/auth', authRoutes);
-app.use('/api', newsRoutes);
+index.use(express.json());
+index.use('/api/auth', authRoutes);
+index.use('/api', newsRoutes);
 
-app.listen(config.port, () => {
+index.listen(config.port, () => {
   console.log(`Server is running on port ${config.port}`);
 });
