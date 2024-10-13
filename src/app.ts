@@ -8,7 +8,9 @@ const app = express();
 export const prisma = new PrismaClient();
 
 app.use(express.json());
-
+app.get('/', (req, res) => {
+  res.send('Server is running...., FUCK YOU motherboard ');
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api', newsRoutes);
