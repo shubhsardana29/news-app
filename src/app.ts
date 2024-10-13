@@ -8,6 +8,8 @@ const app = express();
 export const prisma = new PrismaClient();
 
 app.use(express.json());
+
+
 app.use('/api/auth', authRoutes);
 app.use('/api', newsRoutes);
 

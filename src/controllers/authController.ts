@@ -3,10 +3,40 @@ import { prisma } from '../app';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/config';
+import { verifyGoogleToken } from '../utils/googleAuth';
 
-export const signup = async (req: Request, res: Response) => {
+export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { username, password, name, city } = req.body;
+    const { username, password, name, city, email } = req.body;
+    
+    // Validate required fields
+    if (!username || !password || !name || !email) {
+      res.status(400).json({ error: 'Username, password, name, and email are required' });
+      return;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({ error: 'Invalid email format' });
+      return;
+    }
+    
+    // Check if user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username },
+          { email }
+        ]
+      }
+    });
+    
+    if (existingUser) {
+      res.status(400).json({ error: 'Username or email already in use' });
+      return;
+    }
+    
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -14,31 +44,87 @@ export const signup = async (req: Request, res: Response) => {
         password: hashedPassword,
         name,
         city,
+        email,
       },
     });
+    
     const token = jwt.sign({ id: user.id, username: user.username }, config.jwtSecret);
     res.json({ token });
   } catch (error) {
+    console.error('Error during signup:', error);
     res.status(500).json({ error: 'An error occurred during signup' });
   }
 };
 
 export const signin = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { username, password } = req.body;
-      const user = await prisma.user.findUnique({ where: { username } });
-      if (!user) {
-        res.status(400).json({ error: 'Invalid username or password' });
-        return;
-      }
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        res.status(400).json({ error: 'Invalid username or password' });
-        return;
-      }
-      const token = jwt.sign({ id: user.id, username: user.username }, config.jwtSecret);
-      res.json({ token });
-    } catch (error) {
-      res.status(500).json({ error: 'An error occurred during signin' });
+  try {
+    const { username, password } = req.body;
+    const user = await prisma.user.findUnique({ where: { username } });
+    
+    if (!user) {
+      res.status(400).json({ error: 'Invalid username or password' });
+      return;
     }
-  };
+    
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      res.status(400).json({ error: 'Invalid username or password' });
+      return;
+    }
+    
+    const token = jwt.sign({ id: user.id, username: user.username }, config.jwtSecret);
+    res.json({ token });
+  } catch (error) {
+    console.error('Error during signin:', error);
+    res.status(500).json({ error: 'An error occurred during signin' });
+  }
+};
+
+export const getUserFromGoogleToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const googleToken = req.query.googleToken;
+    
+    if (!googleToken || typeof googleToken !== 'string') {
+      res.status(400).json({ error: 'Google token is required' });
+      return;
+    }
+    
+    const googleUser = await verifyGoogleToken(googleToken);
+    
+    if (!googleUser.email) {
+      res.status(400).json({ error: 'Email is required from Google authentication' });
+      return;
+    }
+    
+    let user = await prisma.user.findUnique({ where: { googleId: googleUser.googleId } });
+    
+    if (!user) {
+      // Create a new user if they don't exist
+      user = await prisma.user.create({
+        data: {
+          googleId: googleUser.googleId,
+          username: googleUser.email, // Use email as username
+          name: googleUser.name || 'Google User', // Provide a default name if not available
+          email: googleUser.email,
+          // Generate a random password for Google users
+          password: await bcrypt.hash(Math.random().toString(36).slice(-8), 10),
+          city: null, // Set to null or provide a default value if required
+        },
+      });
+    }
+    
+    const token = jwt.sign({ id: user.id, username: user.username }, config.jwtSecret);
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+      },
+      token: token
+    });
+  } catch (error) {
+    console.error('Error in Google token verification:', error);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
+};

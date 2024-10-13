@@ -4,7 +4,9 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "dev": "ts-node src/app.ts"
+    "dev": "ts-node src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +18,7 @@
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
     "express": "^4.21.0",
+    "google-auth-library": "^9.14.2",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
