@@ -8,8 +8,17 @@ interface AuthRequest extends Request {
 
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
+  const queryToken = req.query.jwtToken as string;
+
+  let token: string | undefined;
+
   if (authHeader) {
-    const token = authHeader.split(' ')[1];
+    token = authHeader.split(' ')[1];
+  } else if (queryToken) {
+    token = queryToken;
+  }
+
+  if (token) {
     jwt.verify(token, config.jwtSecret, (err, user) => {
       if (err) {
         return res.sendStatus(403);
@@ -24,8 +33,17 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
 
 export const optionalAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
+  const queryToken = req.query.jwtToken as string;
+
+  let token: string | undefined;
+
   if (authHeader) {
-    const token = authHeader.split(' ')[1];
+    token = authHeader.split(' ')[1];
+  } else if (queryToken) {
+    token = queryToken;
+  }
+
+  if (token) {
     jwt.verify(token, config.jwtSecret, (err, user) => {
       if (!err) {
         req.user = user as { id: string; username: string };

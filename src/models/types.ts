@@ -1,15 +1,17 @@
 export interface News {
-    id: string;
-    title: string;
-    description: string | null;
-    content: string | null;
-    author: string | null;
-    sourceId: string | null;
-    sourceName: string | null;
-    url: string;
-    urlToImage: string | null;
-    publishedAt: Date;
-  }
+  newsId: string;
+  newsTitle: string;
+  newsContent: string;
+  datePublished: Date;
+  sourceName: string;
+  sourceUrl: string;
+  newsImageURL: string;
+  groupId: string;
+  groupName: string;
+  description: string | null;
+  author: string | null;
+  isUserSubscribedToGroup: boolean;
+}
   
   export interface Group {
     id: string;

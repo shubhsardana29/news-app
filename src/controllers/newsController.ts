@@ -1,4 +1,4 @@
-import { Request, Response , NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../app';
 import { fetchNewsFromApi } from '../services/newsApiService';
 import { getAiAnswer } from '../services/aiService';
@@ -13,6 +13,7 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = 5;
+    const userId = req.user?.id;
 
     const apiResponse = await fetchNewsFromApi();
     
@@ -47,24 +48,54 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
     const news = await prisma.news.findMany({
       take: limit,
       skip: (page - 1) * limit,
-      orderBy: { publishedAt: 'desc' }
+      orderBy: { publishedAt: 'desc' },
+      include: {
+        groups: {
+          include: {
+            group: {
+              include: {
+                users: {
+                  where: {
+                    userId: userId
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     });
 
+    const formattedNews = news.map(item => ({
+      newsId: item.id,
+      newsTitle: item.title,
+      newsContent: item.content || '',
+      datePublished: item.publishedAt,
+      sourceName: item.sourceName || '',
+      sourceUrl: item.url,
+      newsImageURL: item.urlToImage || '',
+      groupId: item.groups[0]?.group.id || '',
+      groupName: item.groups[0]?.group.name || '',
+      isUserSubscribedToGroup: item.groups[0]?.group.users.length > 0,
+      description: item.description,
+      author: item.author
+    }));
+
     const total = await prisma.news.count();
-    const paginatedNews: PagingData<News> = paginate(news, page, limit, total);
+    const paginatedNews: PagingData<News> = paginate(formattedNews, page, limit, total);
 
     res.json(paginatedNews);
   } catch (error) {
-      res.status(500).json({ error: 'An error occurred while fetching news' });
-      next(error);
+    next(error);
   }
 };
 
-export const getTimeline = async (req: AuthRequest, res: Response , next: NextFunction) => {
+export const getTimeline = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { newsId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
     const limit = 50;
+    const userId = req.user?.id;
 
     const groupNews = await prisma.groupNews.findFirst({
       where: { newsId },
@@ -75,44 +106,120 @@ export const getTimeline = async (req: AuthRequest, res: Response , next: NextFu
       return res.status(404).json({ error: 'News not found in any group' });
     }
 
-    const newsIds = await prisma.groupNews.findMany({
-      where: { groupId: groupNews.groupId },
-      select: { newsId: true }
-    });
-
     const news = await prisma.news.findMany({
-      where: { id: { in: newsIds.map((n: { newsId: any; }) => n.newsId) } },
+      where: {
+        groups: {
+          some: {
+            groupId: groupNews.groupId
+          }
+        }
+      },
       take: limit,
       skip: (page - 1) * limit,
-      orderBy: { publishedAt: 'desc' }
+      orderBy: { publishedAt: 'desc' },
+      include: {
+        groups: {
+          include: {
+            group: {
+              include: {
+                users: {
+                  where: {
+                    userId: userId
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     });
 
+    const formattedNews = news.map(item => ({
+      newsId: item.id,
+      newsTitle: item.title,
+      newsContent: item.content || '',
+      datePublished: item.publishedAt,
+      sourceName: item.sourceName || '',
+      sourceUrl: item.url,
+      newsImageURL: item.urlToImage || '',
+      groupId: groupNews.groupId,
+      groupName: groupNews.group.name,
+      isUserSubscribedToGroup: item.groups[0]?.group.users.length > 0,
+      description: item.description,
+      author: item.author
+    }));
+
     const total = await prisma.groupNews.count({ where: { groupId: groupNews.groupId } });
-    const paginatedNews: PagingData<News> = paginate(news, page, limit, total);
+    const paginatedNews: PagingData<News> = paginate(formattedNews, page, limit, total);
 
     res.json(paginatedNews);
   } catch (error) {
-    res.status(500).json({ error: 'An error occurred while fetching the timeline' });
     next(error);
   }
 };
 
-export const getAiAnswerForNews = async (req: AuthRequest, res: Response, next: NextFunction) => {
+export const getNewsById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { userQuestion, newsId } = req.params;
+    const { newsId } = req.params;
+    const userId = req.user?.id;
 
-    const news = await prisma.news.findUnique({ where: { id: newsId } });
+    const news = await prisma.news.findUnique({
+      where: { id: newsId },
+      include: {
+        groups: {
+          include: {
+            group: {
+              include: {
+                users: {
+                  where: {
+                    userId: userId
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
     if (!news) {
       return res.status(404).json({ error: 'News not found' });
     }
 
-    const answer = await getAiAnswer(userQuestion, news);
-    res.json({ answer });
+    const formattedNews = {
+      newsId: news.id,
+      newsTitle: news.title,
+      newsContent: news.content || '',
+      datePublished: news.publishedAt.toISOString(),
+      sourceName: news.sourceName || '',
+      sourceUrl: news.url,
+      newsImageURL: news.urlToImage || '',
+      groupId: news.groups[0]?.group.id || '',
+      groupName: news.groups[0]?.group.name || '',
+      isUserSubscribedToGroup: news.groups[0]?.group.users.length > 0
+    };
+
+    res.json(formattedNews);
   } catch (error) {
-    res.status(500).json({ error: 'An error occurred while getting AI answer' });
     next(error);
   }
 };
+
+// export const getAiAnswerForNews = async (req: AuthRequest, res: Response, next: NextFunction) => {
+//   try {
+//     const { userQuestion, newsId } = req.params;
+
+//     const news = await prisma.news.findUnique({ where: { id: newsId } });
+//     if (!news) {
+//       return res.status(404).json({ error: 'News not found' });
+//     }
+
+//     const answer = await getAiAnswer(userQuestion, news);
+//     res.json({ answer });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const getFollowUp = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -127,13 +234,16 @@ export const getFollowUp = async (req: AuthRequest, res: Response, next: NextFun
       skip: (page - 1) * limit
     });
 
-    const groups = userGroups.map((ug: { group: any; }) => ug.group);
+    const groups = userGroups.map(ug => ({
+      id: ug.group.id,
+      name: ug.group.name,
+      description: ug.group.description
+    }));
     const total = await prisma.userGroup.count({ where: { userId } });
     const paginatedGroups: PagingData<Group> = paginate(groups, page, limit, total);
 
     res.json(paginatedGroups);
   } catch (error) {
-    res.status(500).json({ error: 'An error occurred while fetching follow-up groups' });
     next(error);
   }
 };
@@ -148,7 +258,6 @@ export const getAllSides = async (req: AuthRequest, res: Response, next: NextFun
 
     res.json({ left: leftNews, right: rightNews, center: centerNews });
   } catch (error) {
-    res.status(500).json({ error: 'An error occurred while fetching all sides' });
     next(error);
   }
 };
