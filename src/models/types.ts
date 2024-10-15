@@ -1,7 +1,7 @@
 export interface News {
   newsId: string;
   newsTitle: string;
-  newsContent: string;
+  newsContent: string | null;
   datePublished: Date;
   sourceName: string;
   sourceUrl: string;

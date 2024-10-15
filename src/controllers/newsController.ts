@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../app';
 import { fetchNewsFromApi } from '../services/newsApiService';
-import { getAiAnswer } from '../services/aiService';
-import { PagingData, paginate } from '../utils/pagingUtils';
-import { News, Group } from '../models/types';
 import { analyzeNewsContent } from '../services/geminiService';
+import { PagingData, paginate } from '../utils/pagingUtils';
+import { Group, News } from '../models/types';
 
 interface AuthRequest extends Request {
   user?: { id: string; username: string };
@@ -13,106 +12,92 @@ interface AuthRequest extends Request {
 export const getNews = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = 5;
+    const limit = parseInt(req.query.limit as string) || 10;
     const userId = req.user?.id;
 
     const apiResponse = await fetchNewsFromApi();
     
-    // Store news in the database and analyze with Gemini
-    for (const article of apiResponse.articles) {
-      const news = await prisma.news.upsert({
-        where: { url: article.url },
-        update: {
-          title: article.title,
-          description: article.description,
-          content: article.content,
-          author: article.author,
-          sourceId: article.source.id || 'unknown',
-          sourceName: article.source.name || 'unknown',
-          urlToImage: article.urlToImage,
-          publishedAt: new Date(article.publishedAt)
-        },
-        create: {
-          title: article.title,
-          description: article.description,
-          content: article.content,
-          author: article.author,
-          sourceId: article.source.id || 'unknown',
-          sourceName: article.source.name || 'unknown',
-          url: article.url,
-          urlToImage: article.urlToImage,
-          publishedAt: new Date(article.publishedAt)
-        }
-      });
+    const processedNews = [];
 
-      // Analyze and group the news
-      const suggestedGroups = await analyzeNewsContent(
-        article.title,
-        article.content,
-        article.description,
-      );
-      
-      for (const group of suggestedGroups) {
-        let existingGroup = await prisma.group.findFirst({
-          where: { name: group.name }
+    for (const article of apiResponse.articles) {
+      let news = await prisma.news.findUnique({ where: { url: article.url } });
+
+      if (!news) {
+        news = await prisma.news.create({
+          data: {
+            title: article.title,
+            description: article.description,
+            content: article.content,
+            author: article.author,
+            sourceId: article.source.id || 'unknown',
+            sourceName: article.source.name,
+            url: article.url,
+            urlToImage: article.urlToImage,
+            publishedAt: new Date(article.publishedAt)
+          }
         });
 
-        if (!existingGroup) {
-          existingGroup = await prisma.group.create({
+        // Analyze and group the news
+        const suggestedGroups = await analyzeNewsContent(article.title, article.content, article.description);
+        
+        for (const group of suggestedGroups) {
+          let existingGroup = await prisma.group.findFirst({
+            where: { name: group.name }
+          });
+
+          if (!existingGroup) {
+            existingGroup = await prisma.group.create({
+              data: {
+                name: group.name,
+                description: group.description
+              }
+            });
+          }
+
+          await prisma.groupNews.create({
             data: {
-              name: group.name,
-              description: group.description,
+              newsId: news.id,
+              groupId: existingGroup.id
             }
           });
         }
-
-        await prisma.groupNews.create({
-          data: {
-            newsId: news.id,
-            groupId: existingGroup.id
-          }
-        });
       }
-    }
 
-    const news = await prisma.news.findMany({
-      take: limit,
-      skip: (page - 1) * limit,
-      orderBy: { publishedAt: 'desc' },
-      include: {
-        groups: {
-          include: {
-            group: {
-              include: {
-                users: {
-                  where: {
-                    userId: userId
-                  }
-                }
-              }
+      const newsWithGroup = await prisma.news.findUnique({
+        where: { id: news.id },
+        include: {
+          groups: {
+            include: {
+              group: true
             }
           }
         }
-      }
-    });
+      });
 
-    const formattedNews = news.map(item => ({
-      newsId: item.id,
-      newsTitle: item.title,
-      newsContent: item.content || '',
-      datePublished: item.publishedAt,
-      sourceName: item.sourceName || '',
-      sourceUrl: item.url,
-      newsImageURL: item.urlToImage || '',
-      groupId: item.groups[0]?.group.id || '',
-      groupName: item.groups[0]?.group.name || '',
-      isUserSubscribedToGroup: item.groups[0]?.group.users.length > 0,
-      description: item.description,
-      author: item.author
-    }));
+      const userSubscription = userId ? await prisma.userGroup.findFirst({
+        where: {
+          userId: userId,
+          groupId: newsWithGroup?.groups[0]?.group.id
+        }
+      }) : null;
 
+      processedNews.push({
+        newsId: news.id,
+        newsTitle: news.title,
+        newsContent: news.content,
+        datePublished: news.publishedAt,
+        sourceName: news.sourceName,
+        sourceUrl: news.url,
+        newsImageURL: news.urlToImage,
+        groupId: newsWithGroup?.groups[0]?.group.id || '',
+        groupName: newsWithGroup?.groups[0]?.group.name || '',
+        isUserSubscribedToGroup: !!userSubscription,
+        description: news.description,
+        author: news.author
+      });
+    }
     const total = await prisma.news.count();
-    const paginatedNews: PagingData<News> = paginate(formattedNews, page, limit, total);
+    const paginatedNews = paginate(processedNews, page, limit, total);
 
     res.json(paginatedNews);
   } catch (error) {
