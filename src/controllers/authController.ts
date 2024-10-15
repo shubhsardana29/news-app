@@ -113,11 +113,11 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
       });
     }
     
-    const token = jwt.sign({ id: user.id, username: user.username }, config.jwtSecret);
+    const token = jwt.sign({ userId: user.id, userName: user.username }, config.jwtSecret);
     res.json({
       user: {
-        id: user.id,
-        username: user.username,
+        userId: user.id,
+        userName: user.username,
         name: user.name,
         email: user.email,
       },
