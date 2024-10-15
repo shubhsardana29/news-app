@@ -15,18 +15,31 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
     const limit = parseInt(req.query.limit as string) || 10;
     const userId = req.user?.id;
 
+    console.log('Fetching news from API');
     const apiResponse = await fetchNewsFromApi();
-    
+    console.log(`Received ${apiResponse.articles.length} articles from API`);
+
     const processedNews = [];
 
     for (const article of apiResponse.articles) {
+      console.log(`Processing article: ${article.title}`);
+
+      // Check for title and content presence
+      if (!article.title || !article.content) {
+        console.log('Skipping article due to missing title or content');
+        continue;  // Skip this article
+      }
+
+      console.log('Article has title and content. Proceeding with database checks.');
+
       let news = await prisma.news.findUnique({ where: { url: article.url } });
 
       if (!news) {
+        console.log('Creating new news entry');
         news = await prisma.news.create({
           data: {
             title: article.title,
-            description: article.description,
+            description: article.description || 'No description',  // Allow null
             content: article.content,
             author: article.author,
             sourceId: article.source.id || 'unknown',
@@ -37,33 +50,51 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
           }
         });
 
-        // Analyze and group the news
-        const suggestedGroups = await analyzeNewsContent(article.title, article.content, article.description);
+        console.log('Analyzing news content for groups with Gemini');
         
-        for (const group of suggestedGroups) {
-          let existingGroup = await prisma.group.findFirst({
-            where: { name: group.name }
-          });
+        try {
+          // Pass title, content, and description (allowing null)
+          const suggestedGroups = await analyzeNewsContent(
+            article.title,
+            article.content || '',
+            article.description || '' 
+          );
 
-          if (!existingGroup) {
-            existingGroup = await prisma.group.create({
+          console.log('Suggested groups from Gemini:', suggestedGroups);
+
+          for (const group of suggestedGroups) {
+            console.log(`Processing group: ${group.name}`);
+            let existingGroup = await prisma.group.findFirst({
+              where: { name: group.name }
+            });
+
+            if (!existingGroup) {
+              console.log(`Creating new group: ${group.name}`);
+              existingGroup = await prisma.group.create({
+                data: {
+                  name: group.name,
+                  description: group.description
+                }
+              });
+            }
+
+            console.log(`Associating news with group: ${existingGroup.name}`);
+            await prisma.groupNews.create({
               data: {
-                name: group.name,
-                description: group.description
+                newsId: news.id,
+                groupId: existingGroup.id
               }
             });
           }
-
-          await prisma.groupNews.create({
-            data: {
-              newsId: news.id,
-              groupId: existingGroup.id
-            }
-          });
+        } catch (error) {
+          console.error('Error during Gemini analysis:', error);
         }
+      } else {
+        console.log(`News entry already exists for ${article.title}`);
       }
 
-      const newsWithGroup = await prisma.news.findUnique({
+      console.log(`Retrieving news with groups for: ${news.title}`);
+      const newsWithGroups = await prisma.news.findUnique({
         where: { id: news.id },
         include: {
           groups: {
@@ -74,14 +105,9 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
         }
       });
 
-      const userSubscription = userId ? await prisma.userGroup.findFirst({
-        where: {
-          userId: userId,
-          groupId: newsWithGroup?.groups[0]?.group.id
-        }
-      }) : null;
+      console.log(`Groups for ${news.title}:`, newsWithGroups?.groups);
 
-      processedNews.push({
+      const formattedNews = {
         newsId: news.id,
         newsTitle: news.title,
         newsContent: news.content,
@@ -89,21 +115,46 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
         sourceName: news.sourceName,
         sourceUrl: news.url,
         newsImageURL: news.urlToImage,
-        groupId: newsWithGroup?.groups[0]?.group.id || '',
-        groupName: newsWithGroup?.groups[0]?.group.name || '',
-        isUserSubscribedToGroup: !!userSubscription,
+        groups: newsWithGroups?.groups.map(groupNews => ({
+          groupId: groupNews.group.id,
+          groupName: groupNews.group.name,
+          isUserSubscribedToGroup: false
+        })) || [],
         description: news.description,
         author: news.author
-      });
+      };
+
+      if (userId) {
+        console.log(`Checking user subscriptions for user: ${userId}`);
+        const userSubscriptions = await prisma.userGroup.findMany({
+          where: {
+            userId: userId,
+            groupId: {
+              in: formattedNews.groups.map(g => g.groupId)
+            }
+          }
+        });
+
+        formattedNews.groups = formattedNews.groups.map(group => ({
+          ...group,
+          isUserSubscribedToGroup: userSubscriptions.some(sub => sub.groupId === group.groupId)
+        }));
+      }
+
+      processedNews.push(formattedNews);
     }
+
     const total = await prisma.news.count();
     const paginatedNews = paginate(processedNews, page, limit, total);
 
+    console.log(`Sending response with ${processedNews.length} processed news items`);
     res.json(paginatedNews);
   } catch (error) {
+    console.error('Error in getNews:', error);
     next(error);
   }
 };
+
 
 export const getTimeline = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
