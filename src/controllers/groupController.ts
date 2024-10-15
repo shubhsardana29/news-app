@@ -206,24 +206,12 @@ export const createGroup = async (req: AuthRequest, res: Response, next: NextFun
       data: {
         name,
         description
-      },
-      include: {
-        _count: {
-          select: { news: true, users: true }
-        }
       }
     });
 
-    const formattedGroup = {
-      id: newGroup.id,
-      name: newGroup.name,
-      description: newGroup.description,
-      newsCount: newGroup._count.news,
-      followersCount: newGroup._count.users
-    };
-
-    res.status(201).json(formattedGroup);
+    res.status(201).json(newGroup);
   } catch (error) {
+    console.error('Error in createGroup:', error);
     next(error);
   }
 };
