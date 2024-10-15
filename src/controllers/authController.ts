@@ -106,11 +106,21 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
           username: googleUser.email, // Use email as username
           name: googleUser.name || 'Google User', // Provide a default name if not available
           email: googleUser.email,
+          profileImageUrl: googleUser.profileImageUrl,
           // Generate a random password for Google users
           password: await bcrypt.hash(Math.random().toString(36).slice(-8), 10),
           city: null, // Set to null or provide a default value if required
         },
       });
+    }
+    else {
+      // Update existing user's profile image URL if it has changed
+      if (user.profileImageUrl !== googleUser.profileImageUrl) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { profileImageUrl: googleUser.profileImageUrl },
+        });
+      }
     }
     
     const token = jwt.sign({ userId: user.id, userName: user.username }, config.jwtSecret);
@@ -120,6 +130,7 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
         userName: user.username,
         name: user.name,
         email: user.email,
+        profileImageUrl: user.profileImageUrl
       },
       token: token
     });

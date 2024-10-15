@@ -20,6 +20,7 @@ export async function verifyGoogleToken(idToken: string) {
       googleId: payload['sub'],
       email: payload['email'],
       name: payload['name'],
+      profileImageUrl: payload['picture'] || null,
     };
   } catch (error) {
     console.error('Error verifying Google token:', error);
