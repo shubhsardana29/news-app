@@ -5,6 +5,10 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/config';
 import { verifyGoogleToken } from '../utils/googleAuth';
 
+function extractUsernameFromEmail(email: string): string {
+  return email.split('@')[0];
+}
+
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
     const { username, password, name, city, email } = req.body;
@@ -95,6 +99,9 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
       res.status(400).json({ error: 'Email is required from Google authentication' });
       return;
     }
+
+    const extractedUsername = extractUsernameFromEmail(googleUser.email);
+
     
     let user = await prisma.user.findUnique({ where: { googleId: googleUser.googleId } });
     
@@ -103,13 +110,12 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
       user = await prisma.user.create({
         data: {
           googleId: googleUser.googleId,
-          username: googleUser.email, // Use email as username
+          username: extractedUsername, 
           name: googleUser.name || 'Google User', // Provide a default name if not available
           email: googleUser.email,
           profileImageUrl: googleUser.profileImageUrl,
           // Generate a random password for Google users
           password: await bcrypt.hash(Math.random().toString(36).slice(-8), 10),
-          city: null, // Set to null or provide a default value if required
         },
       });
     }
