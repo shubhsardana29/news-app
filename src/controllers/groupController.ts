@@ -184,24 +184,29 @@ export const getGroupNews = async (req: AuthRequest, res: Response, next: NextFu
   }
 };
 
-export const createGroup = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+export const createGroup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    console.log('Request body:', req.body);
     const { name, description } = req.body;
 
     if (!name) {
+      console.log('Group name is missing');
       res.status(400).json({ error: 'Group name is required' });
       return;
     }
 
+    console.log('Checking for existing group');
     const existingGroup = await prisma.group.findFirst({
       where: { name }
     });
 
     if (existingGroup) {
+      console.log('Group already exists:', existingGroup);
       res.status(400).json({ error: 'A group with this name already exists' });
       return;
     }
 
+    console.log('Creating new group');
     const newGroup = await prisma.group.create({
       data: {
         name,
@@ -209,9 +214,14 @@ export const createGroup = async (req: AuthRequest, res: Response, next: NextFun
       }
     });
 
+    console.log('New group created:', newGroup);
     res.status(201).json(newGroup);
   } catch (error) {
     console.error('Error in createGroup:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     next(error);
   }
 };
