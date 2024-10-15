@@ -4,6 +4,7 @@ import { fetchNewsFromApi } from '../services/newsApiService';
 import { getAiAnswer } from '../services/aiService';
 import { PagingData, paginate } from '../utils/pagingUtils';
 import { News, Group } from '../models/types';
+import { analyzeNewsContent } from '../services/geminiService';
 
 interface AuthRequest extends Request {
   user?: { id: string; username: string };
@@ -17,9 +18,9 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
 
     const apiResponse = await fetchNewsFromApi();
     
-    // Store news in the database
+    // Store news in the database and analyze with Gemini
     for (const article of apiResponse.articles) {
-      await prisma.news.upsert({
+      const news = await prisma.news.upsert({
         where: { url: article.url },
         update: {
           title: article.title,
@@ -43,6 +44,35 @@ export const getNews = async (req: AuthRequest, res: Response, next: NextFunctio
           publishedAt: new Date(article.publishedAt)
         }
       });
+
+      // Analyze and group the news
+      const suggestedGroups = await analyzeNewsContent(
+        article.title,
+        article.content,
+        article.description,
+      );
+      
+      for (const group of suggestedGroups) {
+        let existingGroup = await prisma.group.findFirst({
+          where: { name: group.name }
+        });
+
+        if (!existingGroup) {
+          existingGroup = await prisma.group.create({
+            data: {
+              name: group.name,
+              description: group.description,
+            }
+          });
+        }
+
+        await prisma.groupNews.create({
+          data: {
+            newsId: news.id,
+            groupId: existingGroup.id
+          }
+        });
+      }
     }
 
     const news = await prisma.news.findMany({

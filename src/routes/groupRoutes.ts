@@ -4,17 +4,11 @@ import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
-router.post('/add', authMiddleware, (req, res, next) => {
-  groupController.addGroup(req, res, next).catch(next);
-});
-router.get('/all', (req, res, next) => {
-  groupController.getAllGroups(req, res, next).catch(next);
-});
-router.put('/:id', authMiddleware, (req, res, next) => {
-  groupController.updateGroup(req, res, next).catch(next);
-});
-router.delete('/:id', authMiddleware, (req, res, next) => {
-  groupController.deleteGroup(req, res, next).catch(next);
-});
+router.get('/', groupController.getGroups);
+router.post('/', authMiddleware, groupController.createGroup);
+router.get('/:groupId', groupController.getGroupById);
+router.post('/:groupId/follow', authMiddleware, groupController.followGroup);
+router.post('/:groupId/unfollow', authMiddleware, groupController.unfollowGroup);
+router.get('/:groupId/news', groupController.getGroupNews);
 
 export default router;

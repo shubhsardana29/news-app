@@ -4,5 +4,6 @@ export const config = {
   newsApiUrl: process.env.NEWS_API_URL!,
   googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
   googleAndroidClientId: process.env.GOOGLE_ANDROID_CLIENT_ID,
-    port: process.env.PORT || 3000,
+  port: process.env.PORT || 3000,
+    geminiApiKey: process.env.GEMINI_API_KEY
   };
