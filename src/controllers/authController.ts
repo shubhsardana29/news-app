@@ -131,14 +131,12 @@ export const getUserFromGoogleToken = async (req: Request, res: Response): Promi
     
     const token = jwt.sign({ userId: user.id, userName: user.username }, config.jwtSecret);
     res.json({
-      user: {
         userId: user.id,
         userName: user.username,
         name: user.name,
         email: user.email,
-        profileImageUrl: user.profileImageUrl
-      },
-      token: token
+        profileImageUrl: user.profileImageUrl,
+        token: token
     });
   } catch (error) {
     console.error('Error in Google token verification:', error);
