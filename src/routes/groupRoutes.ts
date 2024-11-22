@@ -11,4 +11,8 @@ router.post('/:groupId/follow', authMiddleware, groupController.followGroup);
 router.post('/:groupId/unfollow', authMiddleware, groupController.unfollowGroup);
 router.get('/:groupId/news', groupController.getGroupNews);
 
+// New routes with JWT in path
+router.post('/:groupId/user/:jwtToken/follow', groupController.followGroupWithToken);
+router.post('/:groupId/user/:jwtToken/unfollow', groupController.unfollowGroupWithToken);
+
 export default router;

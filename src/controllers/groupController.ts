@@ -1,10 +1,118 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt, {JwtPayload} from 'jsonwebtoken';
 import { prisma } from '../app';
 import { PagingData, paginate } from '../utils/pagingUtils';
 
 interface AuthRequest extends Request {
   user?: { id: string; username: string };
 }
+
+export const followGroupWithToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { groupId, jwtToken } = req.params;
+
+    // Verify JWT token
+    let decoded: jwt.JwtPayload;
+    try {
+      decoded = jwt.verify(jwtToken, process.env.JWT_SECRET!) as JwtPayload;
+    } catch (error) {
+      res.status(401).json({ error: 'Invalid token' });
+      return;
+    }
+
+    const userId = decoded.id;
+
+    // Check if group exists
+    const group = await prisma.group.findUnique({
+      where: { id: groupId }
+    });
+
+    if (!group) {
+      res.status(404).json({ error: 'Group not found' });
+      return;
+    }
+
+    // Check if already following
+    const existingFollow = await prisma.userGroup.findUnique({
+      where: {
+        userId_groupId: {
+          userId: userId,
+          groupId: groupId
+        }
+      }
+    });
+
+    if (existingFollow) {
+      res.status(400).json({ error: 'User already follows this group' });
+      return;
+    }
+
+    // Create follow relationship
+    await prisma.userGroup.create({
+      data: {
+        userId: userId,
+        groupId: groupId
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Successfully followed the group',
+      data: {
+        userId: userId,
+        groupId: groupId,
+        groupName: group.name
+      }
+    });
+  } catch (error) {
+    console.error('Error in followGroupWithToken:', error);
+    next(error);
+  }
+};
+
+export const unfollowGroupWithToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { groupId, jwtToken } = req.params;
+
+    // Verify JWT token
+    let decoded: jwt.JwtPayload;
+    try {
+      decoded = jwt.verify(jwtToken, process.env.JWT_SECRET!) as JwtPayload;
+    } catch (error) {
+      res.status(401).json({ error: 'Invalid token' });
+      return;
+    }
+
+    const userId = decoded.id;
+
+    // Delete the follow relationship
+    const deletedFollow = await prisma.userGroup.delete({
+      where: {
+        userId_groupId: {
+          userId: userId,
+          groupId: groupId
+        }
+      }
+    }).catch(() => null);
+
+    if (!deletedFollow) {
+      res.status(404).json({ error: 'User was not following this group' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Successfully unfollowed the group',
+      data: {
+        userId: userId,
+        groupId: groupId
+      }
+    });
+  } catch (error) {
+    console.error('Error in unfollowGroupWithToken:', error);
+    next(error);
+  }
+};
 
 export const getGroups = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
